@@ -3,6 +3,7 @@ import binascii
 import imagehash
 from PIL import Image, ExifTags
 from pillow_heif import register_heif_opener
+import pillow_jxl
 from . import abstracthasher
 
 register_heif_opener()
@@ -14,7 +15,7 @@ class ImageHasher(abstracthasher.AbstractHasher):
         return self._is_matching_magic(
             file_name,
             ['gif', 'jp2', 'jpeg', 'pcx', 'png', 'tiff', 'x-ms-bmp',
-             'x-portable-pixmap', 'x-xbitmap', 'heic']
+             'x-portable-pixmap', 'x-xbitmap', 'heic', 'jxl']
         )
 
     def _get_capture_time(self, img):

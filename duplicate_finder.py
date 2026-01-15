@@ -363,13 +363,13 @@ def _get_similars_from_tree(db, tree: pybktree.BKTree, cursor,
                     similars.append(item)
                     max_size = max_size if item['meta']['file_size'] <= max_size \
                         else item['meta']['file_size']
-
-                dups.append({
-                    '_id': list(similar_hashes.keys()),
-                    'total': len(similars),
-                    'items': similars,
-                    'file_size': max_size
-                })
+                if len(similars) > 1:
+                    dups.append({
+                        '_id': list(similar_hashes.keys()),
+                        'total': len(similars),
+                        'items': similars,
+                        'file_size': max_size
+                    })
 
     return make_duplcated_groups_unique(dups)
 
@@ -474,8 +474,8 @@ def display_duplicates(duplicates, db, trash="./Trash/"):
         def delete_picture_(file_name, trash=trash):
             return str(delete_duplicate_file('/' + file_name, db, trash))
 
-        @app.route('/heic-transform/<path:file_name>', methods=['GET'])
-        def transcode_heic_(file_name):
+        @app.route('/live-transform/<path:file_name>', methods=['GET'])
+        def transcode_live_(file_name):
             heif_image = Image.open('/' + file_name)
             encoded = io.BytesIO()
             heif_image.save(encoded, format='JPEG')

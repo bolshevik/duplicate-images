@@ -12,3 +12,4 @@ Flask-Cors==4.0.0
 pybktree==1.1
 pillow-heif==0.13.1
 av==11.0.0
+pillow-jxl-plugin==1.3.7
