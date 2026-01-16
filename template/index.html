@@ -1,10 +1,10 @@
 <html>
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
 </head>
 
 {% macro duplicate_group(dup) -%}
@@ -20,10 +20,10 @@
     {% for key, values in dup['items'].items() %}
     <tr>
         {% if key not in ('id', 'file_name') %}
-            <th scope="row">{{ key | replace('_', ' ') | title  }}</th>
-            {% for value in values %}
-            <td data-item-id="{{ dup['items']['id'][loop.index - 1] }}">{{ value }}</td>
-            {% endfor %}
+        <th scope="row">{{ key | replace('_', ' ') | title }}</th>
+        {% for value in values %}
+        <td data-item-id="{{ dup['items']['id'][loop.index - 1] }}">{{ value }}</td>
+        {% endfor %}
         {% endif %}
     </tr>
     {% endfor %}
@@ -41,20 +41,21 @@
         <td data-item-id="{{ dup['items']['id'][loop.index - 1] }}">
             {% if '.heic' in file_name | lower or '.jxl' in file_name | lower%}
             <a href="http://127.0.0.1:5000/live-transform/{{ file_name| urlencode }}" target='_blank'>
-                <img class="img-fluid" src="http://127.0.0.1:5000/live-transform/{{ file_name| urlencode }}" alt="{{ file_name }}">
+                <img class="img-fluid" src="http://127.0.0.1:5000/live-transform/{{ file_name| urlencode }}"
+                    alt="{{ file_name }}">
             </a>
             {% else %}
-                {% if '.mp4' in file_name | lower or '.avi' in file_name | lower or '.mov' in file_name | lower 
-                    or '.ogv' in file_name | lower or '.mkv' in file_name | lower or '.mov' in file_name | lower 
-                    or '.webm' in file_name | lower or '.ts' in file_name | lower %}
-                    <video width="320" height="240" controls>
-                    <source src="{{ file_name }}">
-                </video>
-                {% else %}
-                <a href="{{ file_name }}" target='_blank'>
-                    <img class="img-fluid" src="{{ file_name }}" alt="{{ file_name }}">
-                </a>
-                {% endif %}            
+            {% if '.mp4' in file_name | lower or '.avi' in file_name | lower or '.mov' in file_name | lower
+            or '.ogv' in file_name | lower or '.mkv' in file_name | lower or '.mov' in file_name | lower
+            or '.webm' in file_name | lower or '.ts' in file_name | lower %}
+            <video width="320" height="240" controls>
+                <source src="{{ file_name }}">
+            </video>
+            {% else %}
+            <a href="{{ file_name }}" target='_blank'>
+                <img class="img-fluid" src="{{ file_name }}" alt="{{ file_name }}">
+            </a>
+            {% endif %}
             {% endif %}
         </td>
         {% endfor %}
@@ -84,14 +85,15 @@
         <li class="page-item"><a class="page-link" href="{{ current - 1}}.html">Previous</a></li>
         {% endif %}
 
-        {% for page in range(total) %}  
-        <li class="page-item{{ ' disabled' if page==current else '' }}"><a class="page-link" href="{{page}}.html">{{page + 1}}</a></li>
-        {% endfor %} 
+        {% for page in range(total) %}
+        <li class="page-item{{ ' disabled' if page==current else '' }}"><a class="page-link" href="{{page}}.html">{{page
+                + 1}}</a></li>
+        {% endfor %}
 
         {% if current == (total - 1) %}
         <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1">Next</a></li>
         {% else %}
-        <li  class="page-item"><a class="page-link" href="{{ current + 1 }}.html">Next</a></li>
+        <li class="page-item"><a class="page-link" href="{{ current + 1 }}.html">Next</a></li>
         {% endif %}
     </ul>
 </nav>
@@ -99,6 +101,16 @@
 
 <body>
     <div class="container-fluid">
+
+        <div class="alert alert-danger alert-dismissible fade" role="alert" id="file-not-found-alert"
+            style="position: fixed; top: 0; left: 0; width: 100%;">
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span
+                    aria-hidden="true">&times;</span></button>
+            <strong>Error!</strong> File could not be found.
+        </div>
+
+        {{ pagination(current, total) }}
+
         {% for dup in duplicates %}
         <div class="row" style="margin: 15px; margin-bottom: 30px;">
             {{ duplicate_group(dup) }}
@@ -108,21 +120,22 @@
         {{ pagination(current, total) }}
     </div>
 
-    <div class="alert alert-danger alert-dismissible fade" role="alert" id="file-not-found-alert" style="position: fixed; top: 0; left: 0; width: 100%;">
-        <button type="button" class="close" data-hide="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-        <strong>Error!</strong> File could not be found.
-    </div>
 
+    <script src="https://code.jquery.com/jquery-4.0.0.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+        crossorigin="anonymous"></script>
     <script type="text/javascript">
-        $(function(){
-            $("[data-hide]").on("click", function(){
-                $(this).closest("." + $(this).attr("data-hide")).removeClass("in");
+
+        $(function () {
+            $("[data-dismiss]").on("click", function () {
+                $(this).closest("." + $(this).attr("data-dismiss")).removeClass("show");
             });
         });
 
-        $(".delete-btn").click(function() {
+        $(".delete-btn").click(function () {
             var file_name = $(this).data("name");
-            var parent =  $(this).parent();
+            var parent = $(this).parent();
             var item_id = $(this).parent().data("item-id");
             var all_tds = $("td").filter("[data-item-id='" + item_id + "']")
 
@@ -130,22 +143,21 @@
                 url: 'http://127.0.0.1:5000/picture' + file_name, //encodeURIComponent(file_name),
                 // url: '/picture/%2FVolumes',
                 type: 'DELETE',
-                success: function(data) {
-                    if(data == "True") {
+                success: function (data) {
+                    if (data == "True") {
                         all_tds.addClass('fade');
                     }
                     else {
-                        $('#file-not-found-alert').addClass('in');
+                        $('#file-not-found-alert').addClass('show');
                     }
                 },
-                error: function() {
+                error: function () {
                     console.log("Something went wrong...");
                 }
             });
         });
 
     </script>
-
 </body>
 
 </html>

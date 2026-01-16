@@ -472,14 +472,24 @@ def display_duplicates(duplicates, db, trash="./Trash/"):
 
         @app.route('/picture/<path:file_name>', methods=['DELETE'])
         def delete_picture_(file_name, trash=trash):
+            cache_file = folder + '/' + file_name
+            if os.path.isfile(cache_file):
+                os.remove(cache_file)
             return str(delete_duplicate_file('/' + file_name, db, trash))
 
         @app.route('/live-transform/<path:file_name>', methods=['GET'])
         def transcode_live_(file_name):
-            heif_image = Image.open('/' + file_name)
-            encoded = io.BytesIO()
-            heif_image.save(encoded, format='JPEG')
-            return Response(encoded.getvalue(), mimetype='image/jpeg')
+            cache_file = folder + '/' + file_name
+            if not os.path.isfile(cache_file) and os.path.isfile('/' + file_name):
+                heif_image = Image.open('/' + file_name)
+                os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+                heif_image.save(cache_file, format='JPEG')
+
+            if os.path.isfile(cache_file):
+                converted = open(cache_file, "rb")
+            else:
+                converted = None
+            return Response(converted, mimetype='image/jpeg', direct_passthrough=True)
 
         app.run()
 
