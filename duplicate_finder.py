@@ -54,6 +54,7 @@ import pymongo
 from PIL import Image
 import pybktree
 from termcolor import cprint
+import datetime
 
 from hashers import BinaryHasher, ImageHasher, VideoHasher  # , VideoBarcodeHasher
 from utils import ProgressBarPrinter
@@ -140,6 +141,7 @@ def hash_file(file_path: str):
     hashers = get_hashers()
 
     try:
+        meta['file_time'] = datetime.datetime.fromtimestamp(round(os.path.getmtime(file_path)))
         for hasher in hashers:
             if hasher.is_applicable(file_path):
                 with open(file_path, 'rb') as file_object:

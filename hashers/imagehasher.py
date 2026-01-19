@@ -25,7 +25,11 @@ class ImageHasher(abstracthasher.AbstractHasher):
                 for k, v in img.getexif().items()
                 if k in ExifTags.TAGS
             }
-            return exif["DateTimeOriginal"]
+            if "DateTimeOriginal" in exif:
+                return exif["DateTimeOriginal"]
+            if "DateTime" in exif:
+                return exif["DateTime"]
+            return "Time unknown"
         except Exception:
             return "Time unknown"
 
