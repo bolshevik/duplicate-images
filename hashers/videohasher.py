@@ -33,7 +33,7 @@ class VideoHasher(abstracthasher.AbstractHasher):
                 # seek to position but shifted half of the fraction back
                 try:
                     video_decoder.seek(seek_position)
-                    for frame in video_decoder.decode():
+                    for frame in video_decoder.decode(stream):
                         if isinstance(frame, av.video.frame.VideoFrame):
                             ih = self._image_hasher.hash(frame.to_image())
                             hashes = hashes + ih[0]
