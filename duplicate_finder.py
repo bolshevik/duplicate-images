@@ -43,7 +43,6 @@ from tempfile import TemporaryDirectory
 
 import webbrowser
 import binascii
-import io
 from jinja2 import FileSystemLoader, Environment
 from flask import Flask, Response
 from flask_cors import CORS
@@ -306,16 +305,15 @@ def make_duplcated_groups_unique(dups):
     return deduplicated
 
 
-def _build_binary_tree(cursor, pbp: ProgressBarPrinter) -> pybktree.BKTree:
+def _build_binary_tree(hashes, pbp: ProgressBarPrinter) -> pybktree.BKTree:
     """Build binary tree for fuzzy searches."""
     cprint('Building fuzzy tree...')
     # Build a tree
     tree = pybktree.BKTree(pybktree.hamming_distance)
-    for document in cursor:
+    for doc_hash in hashes:
         pbp.print().inc()
-        for doc_hash in document['hashes']:
-            int_hash = int.from_bytes(doc_hash, "big")
-            tree.add(int_hash)
+        int_hash = int.from_bytes(doc_hash, "big")
+        tree.add(int_hash)
 
     return tree
 
@@ -380,14 +378,15 @@ def find_threshold(db, threshold=1):
     """Find duplicates by number of bits of Humming distance"""
     cprint('Finding fuzzy duplicates, it might take a while...')
 
-    cnt = db.count_documents({})
+    all_hashes = list(db.distinct('hashes'))
+    pbp = ProgressBarPrinter(len(all_hashes))
+
+    tree = _build_binary_tree(all_hashes, pbp)
+
+    pbp = ProgressBarPrinter(db.count_documents({}))
     all_documents = db.find()
-
-    pbp = ProgressBarPrinter(cnt)
-
-    tree = _build_binary_tree(all_documents, pbp)
-    pbp.reset()
     all_documents.rewind()
+    #return _get_similars_from_tree_parallel(db, tree, all_documents, pbp, threshold)
     return _get_similars_from_tree(db, tree, all_documents, pbp, threshold)
 
 
