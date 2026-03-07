@@ -7,13 +7,15 @@ class ProgressBarPrinter():
     """Progress bar printer."""
 
     def __init__(self, _max):
+        if _max == 0:
+            raise ValueError('Max must be greater than 0')
         self._max = _max
         self._start_time = None
         self.reset()
 
     def print(self):
         """Print progress"""
-        cprint(f' {round(self._current * 100 / (self._max - 1))}%', end='')
+        cprint(f' {round(self._current * 100 / (self._max))}%', end='')
         if self._start_time is not None:
             duration = datetime.datetime.now() - self._start_time
             left = duration * (self._max - self._current) / self._current
@@ -28,9 +30,9 @@ class ProgressBarPrinter():
 
         return self
 
-    def inc(self):
+    def inc(self, delta=1):
         """Increment progress"""
-        self._current += 1
+        self._current += delta
         if self._start_time is None:
             self._start_time = datetime.datetime.now()
         return self
@@ -40,3 +42,8 @@ class ProgressBarPrinter():
         self._current = 0
         self._start_time = None
         return self
+
+    def __del__(self):
+        """Pring new line on destruction"""
+        self.print()
+        cprint('')

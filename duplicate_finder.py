@@ -9,7 +9,7 @@ Usage:
     duplicate_finder.py show [--db=<db_path>]
     duplicate_finder.py cleanup [--db=<db_path>]
     duplicate_finder.py find [--print] [--delete] [--match-time] [--trash=<trash_path>] \
-[--db=<db_path>] [--threshold=<num>]
+[--db=<db_path>] [--threshold=<num>] [--parallel=<num_processes>] [--chunk-size=<chunk_size>]
     duplicate_finder.py -h | --help
 
 Options:
@@ -21,14 +21,15 @@ Options:
                                (default: number of CPUs).
 
     find:
-        --threshold=<num>     Hash matching threshold. Number of different bits in Hamming \
+      --threshold=<num>         Hash matching threshold. Number of different bits in Hamming \
 distance. False positives are possible.
-        --print               Only print duplicate files rather than displaying HTML file
-        --delete              Move all found duplicate files to the trash. This option \
+      --print                   Only print duplicate files rather than displaying HTML file
+      --delete                  Move all found duplicate files to the trash. This option \
 takes priority over --print.
-        --match-time          Adds the extra constraint that duplicate images must have the
-                              same capture times in order to be considered.
-        --trash=<trash_path>  Where files will be put when they are deleted (default: ./Trash)
+      --match-time              Adds the extra constraint that duplicate images must have the \
+same capture times in order to be considered.
+      --trash=<trash_path>      Where files will be put when they are deleted (default: ./Trash)
+      --chunk-size=<chunk_size> The number of hashes to process at a time (default: 100).
 """
 
 import concurrent.futures
@@ -40,13 +41,14 @@ import shutil
 from subprocess import Popen, PIPE, TimeoutExpired
 import sys
 from tempfile import TemporaryDirectory
+import itertools
+from functools import partial
 
 import webbrowser
 import binascii
 from jinja2 import FileSystemLoader, Environment
 from flask import Flask, Response
 from flask_cors import CORS
-
 
 from more_itertools import chunked
 import pymongo
@@ -305,9 +307,10 @@ def make_duplcated_groups_unique(dups):
     return deduplicated
 
 
-def _build_binary_tree(hashes, pbp: ProgressBarPrinter) -> pybktree.BKTree:
+def _build_binary_tree(hashes) -> pybktree.BKTree:
     """Build binary tree for fuzzy searches."""
     cprint('Building fuzzy tree...')
+    pbp = ProgressBarPrinter(len(hashes))
     # Build a tree
     tree = pybktree.BKTree(pybktree.hamming_distance)
     for doc_hash in hashes:
@@ -320,74 +323,132 @@ def _build_binary_tree(hashes, pbp: ProgressBarPrinter) -> pybktree.BKTree:
 
 def _get_similar_hashes(doc_hashes, tree: pybktree.BKTree, threshold: int) -> set:
     """Get similar hashes from tree."""
-    similar = {}
+    similar = set()
+    deduplicated_hashes = set()
     for doc_hash in doc_hashes:
+        if doc_hash in deduplicated_hashes:
+            continue
+
         int_hash = int.from_bytes(doc_hash, "big")
         new_similar = tree.find(int_hash, threshold)
-        if len(new_similar) > 1:  # length == 1 when it is exact match to itself
-            new_similar = set(new_similar)  # Make unique
-            similar[doc_hash] = list(
+        if len(new_similar) > 0:
+            similar_hashes = list(
                 map(lambda item: binascii.unhexlify(hex(item[1])[2:]), new_similar)
             )
+            deduplicated_hashes.update(similar_hashes)
+            # Make unique
+            similar.add(
+                frozenset(
+                    [doc_hash] + similar_hashes
+                )
+            )
 
-    return similar
+    return frozenset(similar)
 
 
-def _get_similars_from_tree(db, tree: pybktree.BKTree, cursor,
-                            pbp: ProgressBarPrinter, threshold: int):
+def _parallelize_tree_search(tree: pybktree.BKTree, chunks: list,
+                             threshold: int, num_processes=None):
+    if num_processes is None:
+        num_processes = os.cpu_count()
+
+    deduplicated_hashes = set()
+
+    def map_chunk(hashes):
+        filtered_hashes = []
+        for hash_list in hashes:
+            hash_list = set(hash_list) - deduplicated_hashes
+            filtered_hashes.append(hash_list)
+            deduplicated_hashes.update(hash_list)
+
+        result = executor.map(
+            partial(_get_similar_hashes, tree=tree, threshold=threshold),
+            filtered_hashes
+        )
+        return result
+
+    sliced_chunks = map(
+        lambda x: itertools.islice(chunks, x, x+num_processes),
+        range(0, len(chunks), num_processes)
+    )
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results = itertools.chain.from_iterable(map(map_chunk, sliced_chunks))
+
+        for result in results:
+            for hash_list in result:
+                deduplicated_hashes.update(hash_list)
+            yield result
+
+
+def _get_similars_from_tree_parallel(db, tree: pybktree.BKTree, all_hashes: list,
+                                     threshold: int, num_processes=None, chunk_size=30):
     """Get fuzzy matched semilar duplicates."""
     cprint('\rSearching duplicates...')
     dups = []
-    deduplicated = set()
+    deduplicated_file_groups = set()
 
-    for document in cursor:
+    chunks = list(chunked(all_hashes, chunk_size))
+    cprint(f'Split chunks: {len(chunks)}')
+    pbp = ProgressBarPrinter(len(chunks))
+    for result in _parallelize_tree_search(tree, chunks, threshold, num_processes):
         pbp.print().inc()
+        for similar_hashes in result:
+            if len(similar_hashes) > 0:
+                query = db.aggregate([
+                        {
+                            "$match": {
+                                'hashes': {'$in': list(similar_hashes)}
+                            }
+                        },
+                        {
+                            "$group": {
+                                "_id": None,
+                                "total": {"$sum": 1},
+                                "file_size": {"$max": "$meta.file_size"},
+                                "items": {
+                                    "$push": {
+                                        "file_name": "$_id",
+                                        "meta": "$meta",
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "$match": {
+                                "total": {"$gt": 1}
+                            }
+                        },
+                        {"$sort": {"file_size": -1}}
+                    ])
 
-        hashes_to_dedup = set(document['hashes']) - deduplicated
-        deduplicated.update(document['hashes'])
-
-        similar_hashes = _get_similar_hashes(hashes_to_dedup, tree, threshold)
-
-        if len(similar_hashes) > 0:
-            max_size = document['meta']['file_size']
-            for doc_hashes in similar_hashes.values():
-                deduplicated.update(doc_hashes)
-
-                similars = []
-                similars_name = set()
-                for item in db.find({'hashes': {'$in': doc_hashes}}):
-                    if item['_id'] in similars_name:
+                for similars in query:
+                    filenames = frozenset({x['file_name'] for x in similars['items']})
+                    if filenames in deduplicated_file_groups:
                         continue
-                    similars_name.add(item['_id'])
-                    item['file_name'] = item['_id']
-                    similars.append(item)
-                    max_size = max_size if item['meta']['file_size'] <= max_size \
-                        else item['meta']['file_size']
-                if len(similars) > 1:
-                    dups.append({
-                        '_id': list(similar_hashes.keys()),
-                        'total': len(similars),
-                        'items': similars,
-                        'file_size': max_size
-                    })
 
-    return make_duplcated_groups_unique(dups)
+                    deduplicated_file_groups.add(filenames)
+                    dups.append(
+                        {
+                            '_id': list(similar_hashes),
+                            'total': similars['total'],
+                            'items': similars['items'],
+                            'file_size': similars['file_size']
+                        }
+                    )
+        pbp.print()
+
+    return dups
 
 
-def find_threshold(db, threshold=1):
+def find_threshold(db, threshold=1, num_processes=None, chunk_size=30):
     """Find duplicates by number of bits of Humming distance"""
     cprint('Finding fuzzy duplicates, it might take a while...')
 
     all_hashes = list(db.distinct('hashes'))
-    pbp = ProgressBarPrinter(len(all_hashes))
+    tree = _build_binary_tree(all_hashes)
 
-    tree = _build_binary_tree(all_hashes, pbp)
-
-    pbp = ProgressBarPrinter(db.count_documents({}))
-    all_documents = db.find()
-    all_documents.rewind()
-    #return _get_similars_from_tree_parallel(db, tree, all_documents, pbp, threshold)
-    return _get_similars_from_tree(db, tree, all_documents, pbp, threshold)
+    all_similars = _get_similars_from_tree_parallel(db, tree, all_hashes, threshold,
+                                                    num_processes, chunk_size)
+    return all_similars
 
 
 def delete_duplicates(duplicates, db):
@@ -527,14 +588,17 @@ if __name__ == '__main__':
             show(main_db)
         elif args['find']:
             if args['--threshold'] is not None:
-                main_dups = find_threshold(main_db, int(args['--threshold']))
+                chunk_size = int(args['--chunk-size']) if args['--chunk-size'] is not None else 100
+                main_dups = find_threshold(
+                    main_db, int(args['--threshold']), NUM_PROCESSES, chunk_size
+                )
             else:
                 main_dups = find(main_db, args['--match-time'])
 
             if args['--delete']:
                 delete_duplicates(main_dups, main_db)
             elif args['--print']:
-                pprint(main_dups)
+                pprint(main_dups, compact=True, width=1000)
                 print(f'Number of duplicates: {len(main_dups)}')
             else:
                 display_duplicates(main_dups, db=main_db)
